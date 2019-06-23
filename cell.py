@@ -51,7 +51,17 @@ def box_extraction(img_for_box_extraction_path):
     # cv2.imshow("img", img_final_bin);cv2.waitKey()
 
     # joining points
-    # joining_points=cv2.bitwise_and(verticle_lines_img, horizontal_lines_img)
+    joining_points_img=cv2.bitwise_and(verticle_lines_img, horizontal_lines_img)
+    joining_im2, joining_contours, joining_hierarchy = cv2.findContours(
+        img_final_bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    joints=[]
+    for p in joining_contours:
+        area = cv2.contourArea(p)
+        if area < 25:
+            x,y,w,h=cv2.boundingRect(p)
+            joints.append((x,y))
+    #近似连接点
+
     # cv2.imshow("img", joining_points);cv2.waitKey()
 
     # Bold table edges
@@ -63,7 +73,7 @@ def box_extraction(img_for_box_extraction_path):
 
     for c in contours:
         # Returns the location and width,height for every contour
-        area = cv2.contourArea(c)
+
         area_rate = cv2.contourArea(c) / (img.shape[0] * img.shape[1])
         print(f"area: {area_rate}")
         # pass small tables
@@ -123,14 +133,8 @@ def box_extraction(img_for_box_extraction_path):
                     tab.append(row)
 
 
-            # 小单格合并成大单元格
-            # x,y,min_w,h=min(cell_info,key=lambda cell: cell[2])
-            # x, y,w, min_h = min(cell_info, key=lambda cell: cell[3])
             #
-            # for id_row,row in enumerate(tab):
-            #     for id_col,cell in enumerate(row):
-            #         x,y,w,h=cell
-            #         if np.around(w/min_w)>1:
+
 
             for row in tab:
                 for cell in row:
