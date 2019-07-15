@@ -4,11 +4,11 @@ from functools import cmp_to_key, reduce
 import cv2
 import numpy as np
 import xlsxwriter
-
+from ocr_util import *
 from PIL import Image
 import pytesseract
 
-from tesseract_ocr_util import ocr
+
 
 W_TOLERANCE_PIXELS=5
 H_TOLERANCE_PIXELS=5
@@ -83,7 +83,7 @@ def box_extraction(img_for_box_extraction_path):
     (thresh, img_bin) = cv2.threshold(rotated_img, 128, 255,
                                       cv2.THRESH_OTSU | cv2.THRESH_BINARY_INV)  # Thresholding the image
 
-    # cv2.imshow('img',img_bin);cv2.waitKey()
+    cv2.imshow('img',img_bin);cv2.waitKey()
 
     # Defining a kernel length
     w_kernel_length = np.array(rotated_img).shape[1] // 30
@@ -99,23 +99,25 @@ def box_extraction(img_for_box_extraction_path):
 
 
     # Morphological operation to detect verticle lines from an image
-    img_temp1 = cv2.erode(img_bin, verticle_kernel, iterations=1)
+    img_temp1 = cv2.erode(img_bin.copy(), verticle_kernel, iterations=1)
     verticle_lines_img = cv2.dilate(img_temp1, verticle_kernel, iterations=1)
-    # cv2.imshow("img", verticle_lines_img);cv2.waitKey()
+    cv2.imshow("img", verticle_lines_img);cv2.waitKey()
 
     # Morphological operation to detect horizontal lines from an image
-    img_temp2 = cv2.erode(img_bin, hori_kernel, iterations=1)
+    img_temp2 = cv2.erode(img_bin.copy(), hori_kernel, iterations=1)
     horizontal_lines_img = cv2.dilate(img_temp2, hori_kernel, iterations=1)
-    # cv2.imshow("img", horizontal_lines_img);cv2.waitKey()
+    cv2.imshow("img", horizontal_lines_img);cv2.waitKey()
 
     img_final_bin = cv2.bitwise_or(verticle_lines_img, horizontal_lines_img)
+    cv2.imshow("img", img_final_bin);cv2.waitKey()
+
 
     # # Bold table edges
     # img_bin = cv2.dilate(img_bin, kernel)
     # cv2.imshow("img", img_bin);cv2.waitKey()
 
     # joining points
-    joining_points_img=cv2.bitwise_and(verticle_lines_img, horizontal_lines_img)
+    # joining_points_img=cv2.bitwise_and(verticle_lines_img, horizontal_lines_img)
 
     # cv2.imshow("img", joining_points_img);cv2.waitKey()
 
@@ -127,7 +129,7 @@ def box_extraction(img_for_box_extraction_path):
 
     tabs=[]
     for c in contours:
-
+        tab_cell_info = []
         area_rate = cv2.contourArea(c) / (rotated_img.shape[0] * rotated_img.shape[1])
         # print(f"area: {area_rate}")
         # pass small tables
@@ -153,10 +155,10 @@ def box_extraction(img_for_box_extraction_path):
                 # print(hierarchy[index])
                 # print(cv2.contourArea(cell))
                 #
-                # img_cp = rotated_img.copy()
-                # cv2.drawContours(img_cp, [cell], -1, 0, thickness=5)
-                # cv2.imshow("img", img_cp)
-                # cv2.waitKey()
+                img_cp = rotated_img.copy()
+                cv2.drawContours(img_cp, [cell], -1, 0, thickness=5)
+                cv2.imshow("img", img_cp)
+                cv2.waitKey()
                 # 验证继承关系
                 if hierarchy[index][3] != 0:
                     print(f"fliter  {index}  hierarchy {hierarchy[index][3]} ")
@@ -238,7 +240,7 @@ def box_extraction(img_for_box_extraction_path):
 
             # 确定单元格的起始信息
             print(f"tables : {len(avg_spilt_xs)-1} x {len(avg_spilt_ys)-1}")
-            tab_cell_info=[]
+
             for cell in cell_info:
 
                 # cell_img = cv2.cvtColor(rotated_img.copy(), cv2.COLOR_GRAY2BGR)
@@ -279,8 +281,8 @@ def box_extraction(img_for_box_extraction_path):
             # cv2.imshow("img", cell_img);
             # cv2.waitKey()
 
-
-    tabs.append(tab_cell_info)
+        if  tab_cell_info:
+            tabs.append(tab_cell_info)
     return rotated_img,tabs
 
 
@@ -291,8 +293,11 @@ def img_to_tab(rotated_img,tabs_info):
         for cell in tab_cell_info:
             x, y, w, h, xsc, ysc, xec, yec = cell
             chars_cell_img=rotated_img[y:y+h,x:x+w]
-            ret=ocr(chars_cell_img)
-            print(ret)
+            ret=ali_ocr(chars_cell_img)
+            if not ret:
+                # cv2.imshow("img", chars_cell_img);cv2.waitKey()
+                ret=tesseract_ocr(chars_cell_img)
+            # print(ret)
             cell_info={'xsc':xsc,
                        'ysc': ysc,
                        'xec': xec,
@@ -322,10 +327,12 @@ def write_xlsx(path,tabs):
                     worksheet.write(ysc, xsc, word)
 if __name__ == '__main__':
     dataset='./data'
-    for name in os.listdir(dataset)[:1]:
+    for name in os.listdir(dataset)[:]:
+        name='8.jpg'
         print(name)
         jpg_path=os.path.join(dataset, name)
         # jpg_path='/home/ubuntu/PycharmProjects/extract_tables_by_hough/data/4.jpg'
         rotated_img,tabs_info=box_extraction(jpg_path)
         tabs=img_to_tab(rotated_img,tabs_info)
-        write_xlsx('1.xlsx',tabs)
+        write_xlsx(f'./xlsx/{name}.xlsx',tabs)
+        break
