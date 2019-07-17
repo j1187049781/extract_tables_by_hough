@@ -1,13 +1,20 @@
 import base64
 import json
+import os
+from multiprocessing.pool import Pool
+from time import time
 
 import  cv2
-import numpy as np
 import pytesseract
 import requests
 
-ALI_OCR_URL = 'http://192.168.2.13:80/ocrapidocker/ocrservice.json'
+
+ip=os.getenv('ALI_OCR_IP','192.168.2.13')
+ALI_OCR_URL = f'http://{ip}:80/ocrapidocker/ocrservice.json'
+
 def ali_ocr(img,url=ALI_OCR_URL):
+    if  img is None:
+        return ""
     retval, encode_img=cv2.imencode('.jpg',img)
 
     if not retval:
@@ -15,11 +22,12 @@ def ali_ocr(img,url=ALI_OCR_URL):
         return ""
     data = {"method": "ocrService",
             "prob": "true",
-            "charInfo":"false",
+            "charInfo":"true",
             "img": base64.encodebytes(encode_img.tobytes())}
     req = requests.post(url=url, data=data)
 
     res_json = json.loads(req.text)
+    print(res_json)
     code=res_json['code']
     if code ==200:
         data=res_json['data']
@@ -37,7 +45,8 @@ def ali_ocr(img,url=ALI_OCR_URL):
 
 
 def tesseract_ocr(img,conf_th=50):
-
+    if  img is None:
+        return ""
     retval,img_bin=cv2.threshold(img,128,255,cv2.THRESH_OTSU)
     # cv2.imshow('img',img_bin);cv2.waitKey()
 
@@ -57,9 +66,10 @@ def tesseract_ocr(img,conf_th=50):
 
     # cv2.imshow('img',img_bin);cv2.waitKey()
 
-
+    start=time()
     ocr_str=pytesseract.image_to_data(img_bin,lang='chi_sim+eng',config="--psm 6 -c tessedit_write_images=true")
-
+    end=time()
+    print(f'tesseract time: {end-start}')
     print(ocr_str)
     ret=''
     lines=ocr_str.split('\n')
@@ -81,14 +91,31 @@ def tesseract_ocr(img,conf_th=50):
     # print(ret)
     return ret
 
+
+
+def multi_process_ocr(chars_cell_imgs,ocr_fun,processes=None):
+    if not processes:
+        processes=os.cpu_count()
+    print(f"processes: {processes}")
+    if chars_cell_imgs:
+        with Pool(processes) as p:
+            ret=p.map(ocr_fun,chars_cell_imgs)
+            return ret
+
+
+
 if __name__=='__main__':
-    # for i in range(28, 112):
-    #     i=28
-    #     print(f'img {i}')
-    #     img = cv2.imread(f"./cell_images/{i}.tif",0)
-    #
-    #     # tesseract_ocr(img)
-    #     ali_ocr(img)
-    #     break
+    for i in range(0, 112):
+        i=109
+        print(f'img {i}')
+        img = cv2.imread(f"./cell_images/{i}.tif",0)
+
+        ret=tesseract_ocr(img)
+        print(ret)
+        break
     img = cv2.imread("/home/ubuntu/PycharmProjects/extract_tables_by_hough/tessinput.tif", 0)
     print(ali_ocr(img))
+    # (ali_ocr(img))
+    # imgs=[cv2.imread(f"./cell_images/{i}.tif",0) for i in range(0, 112)]
+    # print(multi_process_ocr(imgs,ali_ocr))
+    # print(multi_process_ocr( imgs,tesseract_ocr))

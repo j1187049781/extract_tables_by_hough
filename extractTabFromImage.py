@@ -1,6 +1,6 @@
 import os
 
-import cv2
+
 import numpy as np
 from operator import itemgetter
 from functools import  reduce
@@ -12,7 +12,7 @@ H_TOLERANCE_PIXELS=5
 MIN_CELL_AREA=1000
 MIN_CELL_RESPECT_RATIO=0.05
 IS_OVERLAY_POINT_T=4
-cv2.namedWindow('img', cv2.WINDOW_NORMAL)
+# cv2.namedWindow('img', cv2.WINDOW_NORMAL)
 
 
 def is_overlay_point(x1,y1,x2,y2,min_w,min_h):
@@ -287,24 +287,29 @@ def visualize_tab(origin_img,tabs,write_path=''):
             color=tuple((int(c) for c in color))
             cv2.rectangle(cell_img, (x_start, y_start), (x_start + w, y_start + h),color,5)
             if write_path:
-                cv2.imwrite(f'{i}.tif',origin_img[y_start:y_start + h,x_start:x_start+w])
+                cv2.imwrite(f'{write_path}{i}.tif',origin_img[y_start:y_start + h,x_start:x_start+w])
         cv2.imshow("img", cell_img);
         cv2.waitKey()
+
 
 def img_to_tab(rotated_img,tabs_info):
     tabs=[]
     for tab_cell_info in tabs_info:
         tab = []
+        chars_cell_imgs=[]
         for cell in tab_cell_info:
             x, y, w, h, xsc, ysc, xec, yec = cell
             chars_cell_img=rotated_img[y:y+h,x:x+w]
-            ret=ali_ocr(chars_cell_img)
-            print(f'ali:\t{ret}')
-            if not ret:
-                # cv2.imshow("img", chars_cell_img);cv2.waitKey()
-                ret=tesseract_ocr(chars_cell_img)
-                print(f'tesseract:\t{ret}')
-            # print(ret)
+            chars_cell_imgs.append(chars_cell_img)
+
+        ali_ret=multi_process_ocr(chars_cell_imgs, ali_ocr)
+        print(ali_ret)
+        imgs1=[img if not ali_ret[i] else None for i,img in enumerate(chars_cell_imgs)]
+        tess_ret=multi_process_ocr(imgs1, tesseract_ocr)
+        print(tess_ret)
+        for cell,ali,tess in zip(tab_cell_info,ali_ret,tess_ret):
+            x, y, w, h, xsc, ysc, xec, yec = cell
+            ret=ali if  ali else tess
             cell_info={'xsc':xsc,
                        'ysc': ysc,
                        'xec': xec,
@@ -314,6 +319,8 @@ def img_to_tab(rotated_img,tabs_info):
             tab.append(cell_info)
         tabs.append(tab)
     return tabs
+
+
 
 def write_xlsx(path,tabs):
     with  xlsxwriter.Workbook(path) as workbook:
@@ -352,6 +359,27 @@ def load_img_set_parm(img):
         # cv2.imshow("img", img);cv2.waitKey()
     return img
 
+
+def extract_ocr(img_fp):
+    file_bytes = np.asarray(bytearray(img_fp.read()), dtype=np.uint8)
+    origin_img = cv2.imdecode(file_bytes, 0)  # Read the image
+    # cv2.imshow("img", origin_img);
+    # cv2.waitKey()
+    origin_img = load_img_set_parm(origin_img)
+    rotated_origin_img = correct_tilt(origin_img)
+
+    table_edges_img = filter_small_obj(rotated_origin_img)
+
+
+    table_edges_img = blod_tab_border(table_edges_img)
+    table_edges_img = correct_tilt(table_edges_img)
+
+
+    tabs = find_cell(table_edges_img)
+    merged_tabs = merge_cell(tabs)
+    tabs = img_to_tab(rotated_origin_img, merged_tabs)
+    return tabs
+
 if __name__ == '__main__':
     dataset='/home/ubuntu/PycharmProjects/extract_tables_by_hough/scaneData'
     for name in os.listdir(dataset)[:]:
@@ -373,8 +401,16 @@ if __name__ == '__main__':
 
         tabs=find_cell(table_edges_img)
         merged_tabs=merge_cell(tabs)
-        visualize_tab(rotated_origin_img,merged_tabs,write_path='./cell_images')
+        visualize_tab(rotated_origin_img,merged_tabs,write_path='./cell_images/')
         # cv2.imshow("img", table_edges_img);cv2.waitKey()
         tabs=img_to_tab(rotated_origin_img,merged_tabs)
         write_xlsx(f'./xlsx/{name}.xlsx',tabs)
         break
+
+    # name='1.jpg'
+    # print(name)
+    # jpg_path=os.path.join(dataset, name)
+    # with open(jpg_path,'rb') as fp:
+    #     tabs=extract_ocr(fp)
+    #
+    #     write_xlsx(f'./xlsx/{name}.xlsx',tabs)
